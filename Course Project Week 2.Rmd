@@ -1,0 +1,123 @@
+---
+title: "Reproducible research - Week 2 Project"
+author: "Rui Correia"
+date: "2023-07-23"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(scales)
+library(dplyr)
+library(hms)
+library(timeDate)
+library(gridExtra)
+options(scipen = 1, digits = 2)
+Sys.setlocale("LC_TIME","English")
+```
+
+## Loading and preprocessing the data
+Q1 - The dataset provided for this activity is downloaded from the Github repository and stored into a variable "original_data". This step is cached to avoid repetition while writing the code.
+
+```{r download_dataset, cache= TRUE, echo = TRUE}
+original_data <- read.csv("activity.csv", header = TRUE,
+                 sep = ",") 
+summary(original_data)
+```
+
+Q2 - In order to prepare data for the requests in the assignment, fields "date" and "steps" of the original data frame are then formatted to fit the desired output as Dates and Numeric values, being then stored in a "data" variable. The use of "data_without_NA" allows to remove NA cases from the dataset.
+
+```{r format_dataset, echo = TRUE}
+steps <- as.numeric(original_data$steps)
+date <- as.Date(original_data$date, format="%Y-%m-%d")
+interval <- as.numeric(original_data$interval)
+data <- data.frame(date,steps, interval)
+data_without_NA <- data[complete.cases(data), ]
+```
+
+## What is mean total number of steps taken per day?
+Q1/Q2 - In order to plot the histogram of the total number of steps taken each day, data is grouped by date and the variable "steps_day" used to store the sum of the values for each date. 
+
+```{r plot_1}
+
+data_sum_date <- data_without_NA  %>% group_by(date) %>% summarise_all(sum)
+plot <- ggplot(data = data_sum_date, aes(x = date, y = steps)) + geom_histogram(stat = "identity", width=.9, position=position_dodge(.7)) 
+plot + ggtitle("Number of steps by date") + xlab("Date (Y/M/D)") + ylab("Steps per day") + scale_x_date(breaks = "week", labels = date_format("%Y-%m-%d")) + theme_bw()+ theme(axis.text.x = element_text(angle = 45, hjust = 1))
+                               
+```
+
+Q3- To calculate the mean and the median of the steps taken each day, the same dataset "data" is used.
+
+```{r Q3}
+data_mean <- mean(data_sum_date$steps)
+data_median <- median(data_sum_date$steps)
+data_stats <- data.frame(data_mean, data_median)
+```
+
+The number of steps per day had a mean of `r data_mean` and a median of `r data_median`.
+
+##What is the average daily activity pattern?
+
+Q1 -To plot a time series, first create a data frame with steps and interval as columns. Using "which.max" find the interval with the maximum number of steps.
+
+```{r plot_2}
+data_interval <- data[,c("steps","interval")]
+data_mean_interval <- data_interval %>% group_by(interval) %>% summarise_all(mean, na.rm = TRUE)
+intervaL_max <- data_mean_interval$interval[which.max(data_mean_interval$steps)]
+p <- ggplot(data_mean_interval, aes(x=interval, y=steps)) + geom_line() 
+p 
+                               
+```
+
+Q2 - The maximum number of steps, in average, was taken in interval `r intervaL_max`.
+
+##Inputing missing values
+
+Q1 - TO find the rows with NAs, the function "Complete cases" give an immediate output.
+
+```{r plot_Input NAs}
+Number_NA_Rows <- sum(!complete.cases(data))
+```
+
+The data set is missing `Number_NA_Rows` values.
+
+Q2/Q3 - In order to replace the missing values, the data set "data_mean_interval" created previously is used to replace the missing values with the mean of steps taken for respective time interval. Function "rows_patch" allows to replace the values with NA´s directly by matching the "interval" column value.
+
+```{r plot_Replace NAs}
+data_Replaced_NAs <- data
+data_Replaced_NAs <- rows_patch(data_Replaced_NAs, data_mean_interval, by = "interval")
+```
+
+```{r plot_NA_Hist}
+
+data_replace_NA_sum_date <- data_Replaced_NAs  %>% group_by(date) %>% summarise_all(sum)
+plot <- ggplot(data = data_replace_NA_sum_date, aes(x = date, y = steps)) + geom_histogram(stat = "identity", width=.9, position=position_dodge(.7)) 
+plot + ggtitle("Number of steps by date with replaced NAs") + xlab("Date (Y/M/D)") + ylab("Steps per day") + scale_x_date(breaks = "week", labels = date_format("%Y-%m-%d")) + theme_bw()+ theme(axis.text.x = element_text(angle = 45, hjust = 1))
+                               
+```
+
+```{r Replace NAs_mean_and_median}
+data_replaceNA_mean <- mean(data_replace_NA_sum_date$steps)
+data_replaceNA_median <- median(data_replace_NA_sum_date$steps)
+data_replace_stats <- data.frame(data_replaceNA_mean, data_replaceNA_median)
+```
+
+The number of steps per day, without NA values had a mean of `r data_replaceNA_mean` and a median of `r data_replaceNA_median`.Comparing to the previous mean of `r data_mean` and median of `r data_median`, the impact of substituting the NAs with the average of the steps for each interval does not change significantly the outcome of mean and median.'
+
+##Are there differences in activity patterns between weekdays and weekends?
+```{r weekend_weekday}
+data_Replaced_NAs$date <- as.Date(data_Replaced_NAs$date)
+weekdays1 <- c('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday')
+data_Replaced_NAs$wDay <- factor((weekdays(data_Replaced_NAs$date) %in% weekdays1), levels=c(FALSE, TRUE), labels=c('weekend', 'weekday'))
+
+data_split <- data_Replaced_NAs %>% group_split(wDay)
+data_mean_interval_week <- data_split[[1]] %>% subset(select=c(steps,interval)) %>% group_by(interval) %>% summarise_all(mean, na.rm = TRUE)
+data_mean_interval_weekend <- data_split[[2]] %>% subset(select=c(steps,interval)) %>% group_by(interval) %>% summarise_all(mean, na.rm = TRUE)
+
+p <- ggplot(data_mean_interval_week, aes(x=interval, y=steps)) + geom_line() 
+q <- ggplot(data_mean_interval_weekend, aes(x=interval, y=steps)) + geom_line()
+grid.arrange(p, q, ncol = 2)
+```
